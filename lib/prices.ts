@@ -48,10 +48,19 @@ export function usdToCents(usd: number): bigint {
 // Prices in whole USD dollars; converted to cents at read time. Edit freely.
 const STATIC_USD: Record<string, number> = {
   AAPL: 231.4,
+  MSFT: 442.6,
   NVDA: 174.82,
+  GOOGL: 179.9,
+  AMZN: 221.3,
+  META: 601.5,
   TSLA: 318.05,
-  SPY: 612.77,
+  COIN: 251.7,
+  PLTR: 64.8,
   MSTR: 389.11,
+  SPY: 612.77,
+  QQQ: 503.2,
+  SGOV: 100.5,
+  SLV: 28.1,
   ETH: 3412.55,
 };
 
