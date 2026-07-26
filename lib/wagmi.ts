@@ -1,11 +1,18 @@
 "use client";
 /**
- * wagmi + RainbowKit config (§4.2). EIP-6963 multi-injected discovery is on by
- * default in wagmi v2, so Robinhood Wallet announces itself and appears in the
- * connect list automatically; WalletConnect is the mobile fallback.
+ * wagmi + RainbowKit config (§4.2).
+ *
+ * We deliberately avoid RainbowKit's `getDefaultConfig`, which bundles the
+ * Coinbase Wallet connector (and its @coinbase/cdp-sdk → optional @x402/*
+ * deps that break the Turbopack build). Instead we use only the injected +
+ * WalletConnect wallets. EIP-6963 multi-injected discovery is enabled, so
+ * Robinhood Wallet (and any other announced wallet) still appears automatically;
+ * WalletConnect is the mobile fallback.
  */
-import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { defineChain, http } from "viem";
+import { connectorsForWallets } from "@rainbow-me/rainbowkit";
+import { injectedWallet, walletConnectWallet } from "@rainbow-me/rainbowkit/wallets";
+import { createConfig, http } from "wagmi";
+import { defineChain } from "viem";
 import { publicEnv } from "./env";
 
 const env = publicEnv();
@@ -18,10 +25,15 @@ export const robinhoodChainClient = defineChain({
   blockExplorers: { default: { name: "Explorer", url: env.NEXT_PUBLIC_EXPLORER_URL } },
 });
 
-export const wagmiConfig = getDefaultConfig({
-  appName: "Lend.Casino",
-  projectId: env.NEXT_PUBLIC_WC_PROJECT_ID,
+const connectors = connectorsForWallets(
+  [{ groupName: "Recommended", wallets: [injectedWallet, walletConnectWallet] }],
+  { appName: "Lend.Casino", projectId: env.NEXT_PUBLIC_WC_PROJECT_ID }
+);
+
+export const wagmiConfig = createConfig({
+  connectors,
   chains: [robinhoodChainClient],
   transports: { [robinhoodChainClient.id]: http(env.NEXT_PUBLIC_RPC_URL) },
   ssr: true,
+  multiInjectedProviderDiscovery: true,
 });

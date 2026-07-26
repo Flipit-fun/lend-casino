@@ -29,3 +29,6 @@ next-env.d.ts
 
 # dev-only scripts (chip granting, auth smoke test) — never deploy
 /scripts
+
+# deploy env files hold real secrets copied from .env — never commit
+/deploy
