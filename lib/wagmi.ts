@@ -25,9 +25,14 @@ export const robinhoodChainClient = defineChain({
   blockExplorers: { default: { name: "Explorer", url: env.NEXT_PUBLIC_EXPLORER_URL } },
 });
 
+const projectId = env.NEXT_PUBLIC_WC_PROJECT_ID;
+if (!projectId) {
+  throw new Error("NEXT_PUBLIC_WC_PROJECT_ID is required for the web app (WalletConnect).");
+}
+
 const connectors = connectorsForWallets(
   [{ groupName: "Recommended", wallets: [injectedWallet, walletConnectWallet] }],
-  { appName: "Lend.Casino", projectId: env.NEXT_PUBLIC_WC_PROJECT_ID }
+  { appName: "Lend.Casino", projectId }
 );
 
 export const wagmiConfig = createConfig({

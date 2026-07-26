@@ -31,8 +31,9 @@ const publicSchema = z.object({
   NEXT_PUBLIC_RPC_URL: z.string().url(),
   NEXT_PUBLIC_EXPLORER_URL: z.string().url(),
   NEXT_PUBLIC_TREASURY_ADDRESS: hexAddress,
-  // WalletConnect Cloud project id — required by RainbowKit v2 (mobile fallback).
-  NEXT_PUBLIC_WC_PROJECT_ID: z.string().min(1),
+  // WalletConnect Cloud project id — only used by the web app's wagmi config,
+  // so it's optional here (the worker doesn't have it) and enforced in wagmi.ts.
+  NEXT_PUBLIC_WC_PROJECT_ID: z.string().min(1).optional(),
 });
 
 /* ------------------------------- server only ------------------------------ */
