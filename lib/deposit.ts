@@ -116,16 +116,15 @@ export async function settleConfirmedDeposit(args: {
     const user = await tx.user.findUnique({ where: { address: from } });
     if (!user) return "no-user"; // tokens from an address with no account — flag for review
 
+    // Match any PENDING position for this sender + asset. We do NOT require the
+    // quote to still be unexpired: a real on-chain deposit + confirmations takes
+    // far longer than the 60s quote TTL, and the transfer is real regardless.
+    // (If the quoted price is stale, the amount-mismatch path re-quotes below.)
     const position = await tx.position.findFirst({
-      where: {
-        userId: user.id,
-        assetSymbol: asset.symbol,
-        status: "PENDING",
-        intentExpires: { gt: new Date() },
-      },
+      where: { userId: user.id, assetSymbol: asset.symbol, status: "PENDING" },
       orderBy: { openedAt: "asc" },
     });
-    if (!position) return "no-intent"; // received tokens with no live intent — flag for review
+    if (!position) return "no-intent"; // received tokens with no matching intent — flag for review
 
     let drawnCents = position.drawnCents;
     let valueCents = position.valueCents;

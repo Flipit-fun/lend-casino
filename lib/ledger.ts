@@ -12,10 +12,13 @@
  */
 import { Prisma, type LedgerReason } from "@prisma/client";
 import { db } from "./db";
+import { ApiError } from "./errors";
 
-export class InsufficientChipsError extends Error {
+// Extends ApiError so route handlers surface a clean 400 ("not enough chips")
+// instead of the generic "something went wrong at the counter" 500.
+export class InsufficientChipsError extends ApiError {
   constructor(public shortBy: bigint) {
-    super(`Not enough chips. Short by ${shortBy} cents.`);
+    super("INSUFFICIENT_CHIPS", "Not enough chips. Get some at the cage.", 400);
     this.name = "InsufficientChipsError";
   }
 }
