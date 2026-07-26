@@ -1,0 +1,218 @@
+// Lend.Casino data model (§5). Money is stored as BigInt minor units (§7).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Supabase: pooled (pgbouncer, port 6543) connection for the app runtime…
+  url       = env("DATABASE_URL")
+  // …and the direct (port 5432) connection Prisma Migrate needs.
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  address       String   @unique // lowercase checksum-normalised
+  chipsCents    BigInt   @default(0) // 1 chip = 100 cents = $1.00
+  clientSeed    String // player-settable, provably fair
+  serverSeedId  String?
+  nonce         Int      @default(0) // increments per resolved bet
+  createdAt     DateTime @default(now())
+  bannedAt      DateTime?
+
+  positions Position[]
+  ledger    LedgerEntry[]
+  rounds    GameRound[]
+  payouts   Payout[]
+  seeds     ServerSeed[]
+}
+
+model Asset {
+  symbol        String  @id // AAPL, NVDA, TBIL, XAUT…
+  name          String
+  kind          String // "Tokenized equity" | "RWA · commodity" …
+  tokenAddress  String  @unique
+  decimals      Int
+  ltvBps        Int // 7000 = 70%
+  unitLabel     String // "shares" | "notes" | "oz"
+  enabled       Boolean @default(true)
+  minDepositRaw String // token base units (18-dec) — exceeds int64, stored as integer string
+
+  positions Position[]
+}
+
+model Position {
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id])
+  assetSymbol    String
+  asset          Asset          @relation(fields: [assetSymbol], references: [symbol])
+  ticketNo       Int            @unique @default(autoincrement())
+  qtyRaw         String // token base units held in treasury (18-dec) — integer string
+  markPriceCents BigInt // price at deposit
+  valueCents     BigInt // qty * mark
+  drawnCents     BigInt // chips issued
+  debtCents      BigInt // outstanding, decreases on partial settle
+  status         PositionStatus @default(PENDING)
+  depositTxHash  String?        @unique // set once the on-chain transfer lands
+  intentExpires  DateTime? // PENDING intents expire if unpaid
+  releaseTxHash  String?
+  openedAt       DateTime       @default(now())
+  closedAt       DateTime?
+
+  redemptions Redemption[]
+}
+
+enum PositionStatus {
+  PENDING
+  OPEN
+  SETTLING
+  CLOSED
+  LIQUIDATED
+}
+
+model Redemption {
+  id           String       @id @default(cuid())
+  positionId   String
+  position     Position     @relation(fields: [positionId], references: [id])
+  method       RedeemMethod
+  quotedEthWei String? // wei — integer string
+  quoteExpires DateTime?
+  paidTxHash   String?      @unique // inbound ETH from player
+  chipsBurned  BigInt? // for chips path
+  status       RedeemStatus @default(QUOTED)
+  createdAt    DateTime     @default(now())
+}
+
+enum RedeemMethod {
+  ETH
+  CHIPS
+}
+
+enum RedeemStatus {
+  QUOTED
+  PAID
+  RELEASING
+  RELEASED
+  EXPIRED
+  FAILED
+}
+
+model LedgerEntry {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  deltaCents     BigInt // signed
+  balanceAfter   BigInt
+  reason         LedgerReason
+  refType        String? // "Position" | "GameRound" | "Payout"
+  refId          String?
+  idempotencyKey String?      @unique
+  createdAt      DateTime     @default(now())
+
+  @@index([userId, createdAt])
+}
+
+enum LedgerReason {
+  COLLATERAL_DRAW // + chips when a position opens
+  BET_STAKE // − chips when a bet is placed
+  BET_RETURN // + chips when a bet resolves
+  CHIP_SALE // − chips when sold for ETH
+  REDEEM_BURN // − chips when settling a ticket with chips
+  LIQUIDATION // − chips on forced close
+  ADJUSTMENT // manual, admin-only, always with a note
+}
+
+model Payout {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  kind           PayoutKind
+  amountWei      String       @default("0") // CHIP_SALE: ETH to send (wei, integer string)
+  toAddress      String
+  tokenAddress   String? // COLLATERAL_RELEASE: ERC-20 to send back
+  tokenAmountRaw String? // COLLATERAL_RELEASE: base units (integer string)
+  positionId     String? // COLLATERAL_RELEASE: position being released
+  status         PayoutStatus @default(QUEUED)
+  txHash         String?      @unique
+  attempts       Int          @default(0)
+  lastError      String?
+  idempotencyKey String       @unique
+  createdAt      DateTime     @default(now())
+  sentAt         DateTime?
+}
+
+enum PayoutKind {
+  CHIP_SALE
+  COLLATERAL_RELEASE
+}
+
+enum PayoutStatus {
+  QUEUED
+  SENDING
+  SENT
+  CONFIRMED
+  FAILED
+}
+
+model ServerSeed {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  seed       String // 32 bytes hex — NEVER sent to client while active
+  seedHash   String // sha256(seed) — shown to client immediately
+  revealedAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model GameRound {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  game         GameKind
+  stakeCents   BigInt
+  state        Json // server-authoritative game state
+  serverSeedId String
+  clientSeed   String
+  nonce        Int
+  outcome      Json?
+  returnCents  BigInt?
+  status       RoundStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  settledAt    DateTime?
+
+  @@index([userId, createdAt])
+}
+
+enum GameKind {
+  ROLLIT
+  COIN
+  BLACKJACK
+  MINES
+  DICE
+  HILO
+}
+
+enum RoundStatus {
+  ACTIVE
+  SETTLED
+  VOIDED
+}
+
+model DepositWatch {
+  id        String   @id @default(cuid())
+  lastBlock BigInt
+  updatedAt DateTime @updatedAt
+}
+
+model ProcessedTx {
+  id        String   @id @default(cuid())
+  txHash    String
+  logIndex  Int
+  kind      String // "DEPOSIT" | "REDEEM_ETH"
+  handledAt DateTime @default(now())
+
+  @@unique([txHash, logIndex])
+}

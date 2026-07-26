@@ -1,0 +1,13 @@
+-- AlterTable
+ALTER TABLE "Asset" ALTER COLUMN "minDepositRaw" SET DATA TYPE TEXT;
+
+-- AlterTable
+ALTER TABLE "Payout" ALTER COLUMN "amountWei" SET DEFAULT '0',
+ALTER COLUMN "amountWei" SET DATA TYPE TEXT,
+ALTER COLUMN "tokenAmountRaw" SET DATA TYPE TEXT;
+
+-- AlterTable
+ALTER TABLE "Position" ALTER COLUMN "qtyRaw" SET DATA TYPE TEXT;
+
+-- AlterTable
+ALTER TABLE "Redemption" ALTER COLUMN "quotedEthWei" SET DATA TYPE TEXT;
