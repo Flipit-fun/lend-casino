@@ -14,6 +14,8 @@
  */
 import { priceConfig } from "./env";
 import { getRedis } from "./redis";
+import { getPublicClient } from "./chain";
+import { ROBINHOOD_FEEDS, AGGREGATOR_V3_ABI } from "./priceFeeds";
 
 export interface PriceQuote {
   cents: bigint; // USD cents per unit
@@ -100,19 +102,8 @@ export async function liveEthQuote(): Promise<PriceQuote> {
 // Prices in whole USD dollars; converted to cents at read time. Edit freely.
 const STATIC_USD: Record<string, number> = {
   AAPL: 231.4,
-  MSFT: 442.6,
   NVDA: 174.82,
-  GOOGL: 179.9,
-  AMZN: 221.3,
-  META: 601.5,
   TSLA: 318.05,
-  COIN: 251.7,
-  PLTR: 64.8,
-  MSTR: 389.11,
-  SPY: 612.77,
-  QQQ: 503.2,
-  SGOV: 100.5,
-  SLV: 28.1,
   ETH: 3412.55,
 };
 
@@ -199,13 +190,86 @@ export class HttpPriceProvider implements PriceProvider {
   }
 }
 
+/* -------------------------- on-chain provider ------------------------------ */
+/**
+ * Reads Robinhood stock-token prices from their on-chain Chainlink feeds
+ * (AggregatorV3 latestRoundData) — the multiplier-adjusted per-token price.
+ * ETH comes from the live crypto feed. Symbols without a configured feed (in
+ * lib/priceFeeds.ts) fall back to the static table. Marks cached 10s in Redis.
+ */
+export class OnchainPriceProvider implements PriceProvider {
+  private readonly stat = new StaticPriceProvider();
+
+  async getMark(symbol: string): Promise<PriceQuote> {
+    const sym = symbol.toUpperCase();
+    if (sym === "ETH") return liveEthQuote();
+
+    const feed = ROBINHOOD_FEEDS[sym];
+    if (!feed) return this.stat.getMark(symbol); // no feed configured yet
+
+    const cacheKey = `price:onchain:${sym}`;
+    let redis: ReturnType<typeof getRedis> | null = null;
+    try {
+      redis = getRedis();
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        const p = JSON.parse(cached);
+        return { cents: BigInt(p.cents), asOf: new Date(p.asOf) };
+      }
+    } catch {
+      redis = null;
+    }
+
+    try {
+      // viem's readContract generics are over-strict against our shared client
+      // type; a loose local alias keeps this readable.
+      const client = getPublicClient() as unknown as {
+        readContract: (a: Record<string, unknown>) => Promise<unknown>;
+      };
+      const [round, decimals] = await Promise.all([
+        client.readContract({ address: feed, abi: AGGREGATOR_V3_ABI, functionName: "latestRoundData" }),
+        client.readContract({ address: feed, abi: AGGREGATOR_V3_ABI, functionName: "decimals" }),
+      ]);
+      const answer = (round as readonly bigint[])[1]; // int256 price
+      if (answer <= 0n) throw new Error("non-positive feed answer");
+      const cents = (answer * 100n) / 10n ** BigInt(decimals as number);
+      // Treat the read as fresh: stock feeds hold last price off-hours by design,
+      // so we don't reject on updatedAt here (see docs; harden with oraclePaused
+      // + sequencer-uptime + heartbeat for production).
+      const quote: PriceQuote = { cents, asOf: new Date() };
+      if (redis) {
+        try {
+          await redis.set(
+            cacheKey,
+            JSON.stringify({ cents: cents.toString(), asOf: quote.asOf.toISOString() }),
+            "EX",
+            10
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      return quote;
+    } catch {
+      return this.stat.getMark(symbol); // fall back if the read fails
+    }
+  }
+
+  getEthUsd(): Promise<PriceQuote> {
+    return liveEthQuote();
+  }
+}
+
 /* ----------------------------- selection ---------------------------------- */
 let _provider: PriceProvider | null = null;
 
 export function getPriceProvider(): PriceProvider {
   if (_provider) return _provider;
   const cfg = priceConfig();
-  if (cfg.PRICE_SOURCE === "api") {
+  if (cfg.PRICE_SOURCE === "onchain") {
+    // on-chain Chainlink feeds for stocks + live ETH
+    _provider = new OnchainPriceProvider();
+  } else if (cfg.PRICE_SOURCE === "api") {
     if (!cfg.PRICE_FEED_URL) {
       throw new Error("PRICE_SOURCE=api requires PRICE_FEED_URL to be set.");
     }

@@ -54,9 +54,9 @@ const serverSchema = z.object({
   REDIS_URL: z.string().url(),
   SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 bytes"),
 
-  // Price source: "static" uses the built-in table (no external calls);
-  // "api" hits PRICE_FEED_URL. Swap by flipping this one flag.
-  PRICE_SOURCE: z.enum(["static", "api"]).default("static"),
+  // Price source: "static" = built-in table + live ETH; "onchain" = Chainlink
+  // feeds for stocks + live ETH; "api" hits PRICE_FEED_URL.
+  PRICE_SOURCE: z.enum(["static", "onchain", "api"]).default("static"),
   PRICE_FEED_URL: optionalUrl,
   PRICE_FEED_KEY: optionalNonEmpty,
 
@@ -117,7 +117,7 @@ export function serverEnv(): ServerEnv {
 // lives in this file.
 
 const priceSchema = z.object({
-  PRICE_SOURCE: z.enum(["static", "api"]).default("static"),
+  PRICE_SOURCE: z.enum(["static", "onchain", "api"]).default("static"),
   PRICE_FEED_URL: optionalUrl,
   PRICE_FEED_KEY: optionalNonEmpty,
   PRICE_MAX_STALENESS_SEC: z.coerce.number().int().positive().default(60),
