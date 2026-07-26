@@ -44,6 +44,58 @@ export function usdToCents(usd: number): bigint {
   return BigInt(Math.round(usd * 100));
 }
 
+/* --------------------------- live ETH price -------------------------------- */
+// ETH/USD from Coinbase spot (no API key). Cached 10s in Redis (best-effort).
+// On any failure it falls back to the static ETH price so the critical
+// chip<->ETH conversions never hard-fail.
+async function fetchEthUsdCents(): Promise<bigint> {
+  const res = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot", {
+    cache: "no-store",
+    signal: AbortSignal.timeout(4000),
+  });
+  if (!res.ok) throw new Error(`ETH price feed ${res.status}`);
+  const json = (await res.json()) as { data?: { amount?: string } };
+  const amount = Number(json?.data?.amount);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("bad ETH price payload");
+  return usdToCents(amount);
+}
+
+export async function liveEthQuote(): Promise<PriceQuote> {
+  const cacheKey = "price:ETH";
+  let redis: ReturnType<typeof getRedis> | null = null;
+  try {
+    redis = getRedis();
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      const p = JSON.parse(cached);
+      return { cents: BigInt(p.cents), asOf: new Date(p.asOf) };
+    }
+  } catch {
+    redis = null; // Redis unavailable — proceed without cache
+  }
+
+  let cents: bigint;
+  try {
+    cents = await fetchEthUsdCents();
+  } catch {
+    cents = usdToCents(STATIC_USD.ETH); // fallback, still marked fresh
+  }
+  const quote: PriceQuote = { cents, asOf: new Date() };
+  if (redis) {
+    try {
+      await redis.set(
+        cacheKey,
+        JSON.stringify({ cents: cents.toString(), asOf: quote.asOf.toISOString() }),
+        "EX",
+        10
+      );
+    } catch {
+      /* ignore cache write failure */
+    }
+  }
+  return quote;
+}
+
 /* -------------------------- static provider ------------------------------- */
 // Prices in whole USD dollars; converted to cents at read time. Edit freely.
 const STATIC_USD: Record<string, number> = {
@@ -72,6 +124,22 @@ export class StaticPriceProvider implements PriceProvider {
   }
   getEthUsd(): Promise<PriceQuote> {
     return this.getMark("ETH");
+  }
+}
+
+/* -------------------------- hybrid provider -------------------------------- */
+/**
+ * Default provider: stock marks from the static table, ETH from the live feed.
+ * Lets you run with a dynamic ETH price while stock prices stay static until a
+ * stock feed is configured.
+ */
+export class HybridPriceProvider implements PriceProvider {
+  private readonly stat = new StaticPriceProvider();
+  getMark(symbol: string): Promise<PriceQuote> {
+    return symbol.toUpperCase() === "ETH" ? liveEthQuote() : this.stat.getMark(symbol);
+  }
+  getEthUsd(): Promise<PriceQuote> {
+    return liveEthQuote();
   }
 }
 
@@ -124,8 +192,10 @@ export class HttpPriceProvider implements PriceProvider {
     return quote;
   }
 
+  // ETH always comes from the crypto feed, even in api mode (a stock feed
+  // usually can't price ETH).
   getEthUsd(): Promise<PriceQuote> {
-    return this.getMark("ETH");
+    return liveEthQuote();
   }
 }
 
@@ -141,7 +211,8 @@ export function getPriceProvider(): PriceProvider {
     }
     _provider = new HttpPriceProvider(cfg.PRICE_FEED_URL, cfg.PRICE_FEED_KEY);
   } else {
-    _provider = new StaticPriceProvider();
+    // static stocks + live ETH
+    _provider = new HybridPriceProvider();
   }
   return _provider;
 }

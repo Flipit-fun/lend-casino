@@ -5,7 +5,6 @@ import {
   usdToCents,
   PriceUnavailableError,
   getMark,
-  getEthUsd,
 } from "../lib/prices";
 
 test("usdToCents converts at the boundary", () => {
@@ -28,9 +27,7 @@ test("static provider throws on unknown symbol", async () => {
   await assert.rejects(() => p.getMark("DOGE"), PriceUnavailableError);
 });
 
-test("top-level getMark/getEthUsd work with default static source", async () => {
+test("top-level getMark returns static stock marks (ETH is live, tested separately)", async () => {
   const m = await getMark("SPY");
   assert.equal(m.cents, 61_277n);
-  const e = await getEthUsd();
-  assert.equal(e.cents, 341_255n);
 });
