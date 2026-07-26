@@ -40,6 +40,8 @@ nav{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:90;width
 .navlinks button:hover{color:var(--ink)}
 .navlinks button.on{color:var(--ink)}
 .navlinks button.on::after{content:"";position:absolute;left:0;right:0;bottom:-3px;height:2px;background:var(--verm)}
+.lend-link{display:inline-flex;align-items:center;font-size:12px;letter-spacing:.08em;font-weight:700;color:var(--ink);padding:4px 10px;border-radius:999px;border:1px solid var(--brass);background:rgba(185,139,46,.12);transition:background .2s,color .2s}
+.lend-link:hover{background:var(--brass);color:var(--bone)}
 .navspace{flex:1}
 .purse{display:flex;align-items:center;gap:10px;padding:7px 14px;border-radius:999px;background:var(--felt-pale);border:1px solid rgba(13,88,67,.2)}
 .purse .lab{font-size:9px;letter-spacing:.18em;color:rgba(13,88,67,.7)}
