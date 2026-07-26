@@ -35,24 +35,28 @@ after(async () => {
   await db.$disconnect();
 });
 
-test("deposit intent quotes the draw and stays PENDING", async () => {
+test("deposit intent quotes from a USD amount and supports fractions", async () => {
   const user = await makeUser();
-  const qtyRaw = 10n * 10n ** 18n; // 10 TSLA
-  const quote = await createDepositIntent(user.id, "TSLA", qtyRaw);
 
-  // TSLA static mark $318.05 = 31805 cents; value = 10 * 31805 = 318050 cents.
+  // Deposit a USD amount; the server derives the (fractional) token quantity.
+  // TSLA static mark $318.05; $3180.50 ≈ 10 TSLA.
+  const quote = await createDepositIntent(user.id, "TSLA", 318_050n);
   assert.equal(quote.valueCents, 318_050n);
-  // TSLA LTV 6000 bps -> draw = 190830 cents.
-  assert.equal(quote.drawnCents, 190_830n);
+  assert.equal(quote.drawnCents, 190_830n); // 60% LTV
+  assert.equal(quote.qtyRaw, 10n * 10n ** 18n);
 
   const pos = await db.position.findUniqueOrThrow({ where: { id: quote.positionId } });
   assert.equal(pos.status, "PENDING");
+
+  // A small dollar amount buys less than one share.
+  const frac = await createDepositIntent(user.id, "TSLA", 5_000n); // $50
+  assert.ok(frac.qtyRaw < 10n ** 18n, "less than one share");
 });
 
 test("confirmed deposit credits chips once and opens the ticket", async () => {
   const user = await makeUser();
-  const qtyRaw = 10n * 10n ** 18n;
-  const quote = await createDepositIntent(user.id, "TSLA", qtyRaw);
+  const quote = await createDepositIntent(user.id, "TSLA", 318_050n);
+  const qtyRaw = quote.qtyRaw;
   const asset = await db.asset.findUniqueOrThrow({ where: { symbol: "TSLA" } });
 
   const txHash = `0xhash_${randomUUID()}`;
@@ -86,8 +90,8 @@ test("confirmed deposit credits chips once and opens the ticket", async () => {
 
 test("redeem with chips burns the debt and queues the asset release", async () => {
   const user = await makeUser();
-  const qtyRaw = 10n * 10n ** 18n;
-  const quote = await createDepositIntent(user.id, "TSLA", qtyRaw);
+  const quote = await createDepositIntent(user.id, "TSLA", 318_050n);
+  const qtyRaw = quote.qtyRaw;
   const asset = await db.asset.findUniqueOrThrow({ where: { symbol: "TSLA" } });
   const txHash = `0xhash_${randomUUID()}`;
   txHashes.push(txHash);

@@ -27,16 +27,23 @@ export interface DepositQuote {
 export async function createDepositIntent(
   userId: string,
   symbol: string,
-  qtyRaw: bigint
+  usdCents: bigint
 ): Promise<DepositQuote> {
   const asset = await db.asset.findUnique({ where: { symbol: symbol.toUpperCase() } });
   if (!asset || !asset.enabled) throw new ApiError("NO_ASSET", "That asset isn't accepted.", 400);
+  if (usdCents < 1n) throw new ApiError("BAD_AMOUNT", "Enter a dollar amount.", 400);
+
+  const mark = await getMark(asset.symbol); // throws if stale
+
+  // Convert the requested USD amount into a (fractional) token quantity in base
+  // units, then re-derive the value/draw from that exact quantity.
+  const scale = 10n ** BigInt(asset.decimals);
+  const qtyRaw = mulDivFloor(usdCents, scale, mark.cents);
   if (qtyRaw < BigInt(asset.minDepositRaw)) {
     throw new ApiError("MIN_DEPOSIT", "Amount is below the minimum for this asset.", 400);
   }
 
-  const mark = await getMark(asset.symbol); // throws if stale
-  const valueCents = mulDivFloor(qtyRaw, mark.cents, 10n ** BigInt(asset.decimals));
+  const valueCents = mulDivFloor(qtyRaw, mark.cents, scale);
   const drawnCents = applyBps(valueCents, asset.ltvBps);
   if (drawnCents < 1n) throw new ApiError("TOO_SMALL", "That deposit draws less than one chip.", 400);
 

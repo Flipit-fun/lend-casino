@@ -277,14 +277,15 @@ export function initCage(): () => void {
   function drawDesk() {
     const a = selectedAsset;
     if (!a) return;
-    const qty = Math.max(0, Math.floor(+($("#qtyIn") as HTMLInputElement).value || 0));
+    const dollars = Math.max(0, +($("#qtyIn") as HTMLInputElement).value || 0);
+    const usdCents = Math.round(dollars * 100);
     const markCents = Number(a.markCents ?? 0);
-    const valueCents = qty * markCents;
-    const drawCents = Math.floor((valueCents * a.ltvBps) / 10000);
+    const qty = markCents ? usdCents / markCents : 0; // fractional shares
+    const drawCents = Math.floor((usdCents * a.ltvBps) / 10000);
     $("#deskTitle")!.textContent = a.symbol + " · " + a.name;
-    $("#deskUnit")!.textContent = a.unitLabel;
+    $("#deskUnit")!.textContent = "USD";
     $("#roPrice")!.textContent = a.markCents ? usd(markCents / 100) : "—";
-    $("#roVal")!.textContent = usd(valueCents / 100);
+    $("#roQty")!.textContent = a.markCents ? qty.toFixed(4) + " " + a.unitLabel : "—";
     $("#roLtv")!.textContent = Math.round(a.ltvBps / 100) + "%";
     const eth = Number(lc()?.me?.ethUsdCents ?? 0);
     $("#roEth")!.textContent = eth ? (drawCents / eth).toFixed(4) + " ETH" : "—";
@@ -293,8 +294,8 @@ export function initCage(): () => void {
   }
   const qtyIn = $<HTMLInputElement>("#qtyIn");
   if (qtyIn) qtyIn.oninput = drawDesk;
-  const qMinus = $("#qMinus"); if (qMinus) qMinus.onclick = () => { const el = $("#qtyIn") as HTMLInputElement; el.value = String(Math.max(0, (+el.value || 0) - 1)); drawDesk(); };
-  const qPlus = $("#qPlus"); if (qPlus) qPlus.onclick = () => { const el = $("#qtyIn") as HTMLInputElement; el.value = String((+el.value || 0) + 1); drawDesk(); };
+  const qMinus = $("#qMinus"); if (qMinus) qMinus.onclick = () => { const el = $("#qtyIn") as HTMLInputElement; el.value = String(Math.max(0, (+el.value || 0) - 10)); drawDesk(); };
+  const qPlus = $("#qPlus"); if (qPlus) qPlus.onclick = () => { const el = $("#qtyIn") as HTMLInputElement; el.value = String((+el.value || 0) + 10); drawDesk(); };
 
   async function pollPosition(id: string, want: string, tries = 24) {
     for (let i = 0; i < tries; i++) {
@@ -314,16 +315,16 @@ export function initCage(): () => void {
     if (!requireAuth() || !selectedAsset) return;
     if (!lc()?.chainOk) { toast("Switch to Robinhood Chain first.", "bad"); return; }
     const a = selectedAsset;
-    const units = Math.max(0, Math.floor(+($("#qtyIn") as HTMLInputElement).value || 0));
-    if (units < 1) return;
-    const qtyRaw = (BigInt(units) * 10n ** BigInt(a.decimals)).toString();
+    const dollars = Math.max(0, +($("#qtyIn") as HTMLInputElement).value || 0);
+    const usdCents = Math.round(dollars * 100);
+    if (usdCents < 1) return;
     (pawnBtn as HTMLButtonElement).disabled = true;
     try {
       const intent = await api<{ positionId: string; treasuryAddress: string; tokenAddress: string; qtyRaw: string }>(
         "/api/deposit/intent",
-        { body: { symbol: a.symbol, qtyRaw }, idem: true }
+        { body: { symbol: a.symbol, usdCents }, idem: true }
       );
-      toast(`Sending ${units} ${a.symbol} to the cage…`, "");
+      toast(`Depositing $${dollars} of ${a.symbol}…`, "");
       await lc()!.deposit(intent.tokenAddress, intent.treasuryAddress, intent.qtyRaw);
       toast("Transfer sent — waiting for confirmations.", "good");
       const opened = await pollPosition(intent.positionId, "OPEN");
