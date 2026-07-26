@@ -1,0 +1,62 @@
+# Render blueprint for the Lend.Casino worker (deposit watcher, payout sender,
+# liquidation cron, round reaper). Deploy the web app separately on Vercel.
+#
+# Background workers are a paid instance type on Render (no free tier). Secrets
+# (sync: false) are set in the Render dashboard; non-secret mainnet values are
+# pre-filled here. Keep this to a SINGLE instance — the payout loop is
+# single-flight.
+services:
+  - type: worker
+    name: lend-casino-worker
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm run worker
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+
+      # public chain config (mainnet)
+      - key: NEXT_PUBLIC_CHAIN_ID
+        value: "4663"
+      - key: NEXT_PUBLIC_CHAIN_NAME
+        value: Robinhood Chain
+      - key: NEXT_PUBLIC_RPC_URL
+        value: https://rpc.mainnet.chain.robinhood.com
+      - key: NEXT_PUBLIC_EXPLORER_URL
+        value: https://robinhoodchain.blockscout.com
+      - key: NEXT_PUBLIC_TREASURY_ADDRESS
+        sync: false
+
+      # policy / limits
+      - key: PRICE_SOURCE
+        value: static
+      - key: SELL_POLICY
+        value: full
+      - key: DEPOSIT_CONFIRMATIONS
+        value: "12"
+      - key: PRICE_MAX_STALENESS_SEC
+        value: "60"
+      - key: TREASURY_MIN_ETH_WEI
+        value: "100000000000000000"
+      - key: PAYOUT_PER_TX_CAP_WEI
+        value: "2000000000000000000"
+      - key: PAYOUT_DAILY_CAP_WEI
+        value: "10000000000000000000"
+
+      # secrets — set these in the Render dashboard
+      - key: RPC_URL_PRIVATE
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: TREASURY_PRIVATE_KEY
+        sync: false
+      - key: PRICE_FEED_URL
+        sync: false
+      - key: PRICE_FEED_KEY
+        sync: false
