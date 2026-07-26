@@ -14,6 +14,7 @@ import { settleConfirmedRedemption } from "../lib/redeem";
 import { TRANSFER_EVENT } from "../lib/erc20";
 
 const CHUNK = 1_000n;
+let lastHeartbeat = 0;
 
 export async function runWatcherOnce(): Promise<void> {
   const client = getPublicClient();
@@ -28,11 +29,18 @@ export async function runWatcherOnce(): Promise<void> {
   if (!watch) {
     // Start watching forward from the current safe head (no historical backfill).
     watch = await db.depositWatch.create({ data: { lastBlock: safeHead } });
+    console.log(`[watcher] initialised cursor at block ${safeHead} (head ${head})`);
     return;
   }
 
   let from = watch.lastBlock + 1n;
   if (from > safeHead) return;
+
+  // Heartbeat so the logs show the watcher is alive and advancing.
+  if (Date.now() - lastHeartbeat > 60_000) {
+    console.log(`[watcher] scanning ${from}..${safeHead} (head ${head})`);
+    lastHeartbeat = Date.now();
+  }
 
   const enabled = await db.asset.findMany({
     where: { enabled: true },
@@ -53,13 +61,16 @@ export async function runWatcherOnce(): Promise<void> {
         toBlock: to,
       });
       for (const log of logs) {
-        await settleConfirmedDeposit({
+        const outcome = await settleConfirmedDeposit({
           fromAddress: log.args.from!,
           tokenAddress: log.address,
           receivedRaw: log.args.value!,
           txHash: log.transactionHash!,
           logIndex: log.logIndex!,
         });
+        console.log(
+          `[watcher] deposit ${log.transactionHash} from ${log.args.from} value ${log.args.value} -> ${outcome}`
+        );
       }
     }
 
@@ -69,12 +80,13 @@ export async function runWatcherOnce(): Promise<void> {
       for (const tx of block.transactions) {
         if (typeof tx === "string") continue;
         if (tx.to && tx.to.toLowerCase() === treasury.toLowerCase() && tx.value > 0n) {
-          await settleConfirmedRedemption({
+          const outcome = await settleConfirmedRedemption({
             fromAddress: tx.from,
             valueWei: tx.value,
             txHash: tx.hash,
             logIndex: 0,
           });
+          console.log(`[watcher] eth ${tx.hash} from ${tx.from} value ${tx.value} -> ${outcome}`);
         }
       }
     }
