@@ -104,6 +104,15 @@ const STATIC_USD: Record<string, number> = {
   AAPL: 231.4,
   NVDA: 174.82,
   TSLA: 318.05,
+  MSFT: 442.6,
+  GOOGL: 179.9,
+  AMZN: 221.3,
+  META: 601.5,
+  PLTR: 64.8,
+  COIN: 251.7,
+  MSTR: 389.11,
+  AMD: 165.2,
+  INTC: 22.4,
   ETH: 3412.55,
 };
 
