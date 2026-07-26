@@ -90,12 +90,13 @@ export default function AppBridge() {
     else setMe(null);
   }, [isConnected, address, refetchMe]);
 
-  // Reflect me -> purse DOM.
+  // Reflect me -> purse DOM, but only when the session matches the connected wallet.
   useEffect(() => {
-    setText("purseChips", me ? fmtChips(me.chipsCents) : "0");
-    setText("purseFree", me ? fmtChips(me.freeCents) : "0");
-    setText("purseDebt", me ? fmtEth(me.debtWei) : "0.0000");
-  }, [me]);
+    const ok = !!me && !!address && me.address.toLowerCase() === address.toLowerCase();
+    setText("purseChips", ok ? fmtChips(me!.chipsCents) : "0");
+    setText("purseFree", ok ? fmtChips(me!.freeCents) : "0");
+    setText("purseDebt", ok ? fmtEth(me!.debtWei) : "0.0000");
+  }, [me, address]);
 
   const signIn = useCallback(async () => {
     if (!address || signingIn) return;
@@ -129,14 +130,22 @@ export default function AppBridge() {
   // Expose the bridge for the imperative code.
   const meRef = useRef<Me | null>(null);
   meRef.current = me;
+  const addrRef = useRef<string | undefined>(address);
+  addrRef.current = address;
+  // The session is only valid if it matches the currently-connected wallet.
+  const sessionValid = () => {
+    const m = meRef.current;
+    const a = addrRef.current;
+    return !!m && !!a && m.address.toLowerCase() === a.toLowerCase();
+  };
   useEffect(() => {
     (window as unknown as { LC: unknown }).LC = {
       get authed() {
-        return !!meRef.current;
+        return sessionValid();
       },
       chainOk,
       get me() {
-        return meRef.current;
+        return sessionValid() ? meRef.current : null;
       },
       refetchMe,
       async deposit(tokenAddress: string, to: string, qtyRaw: string) {
