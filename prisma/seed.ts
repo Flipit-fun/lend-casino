@@ -29,6 +29,9 @@ const ASSETS = [
   { symbol: "MSTR", name: "Strategy Inc.", kind: "Tokenized equity", ltvBps: 5000, unitLabel: "shares", token: "0xec262a75e413fAfD0dF80480274532C79D42da09" },
   { symbol: "AMD", name: "Advanced Micro Devices", kind: "Tokenized equity", ltvBps: 6000, unitLabel: "shares", token: "0x86923f96303D656E4aa86D9d42D1e57ad2023fdC" },
   { symbol: "INTC", name: "Intel Corp.", kind: "Tokenized equity", ltvBps: 6000, unitLabel: "shares", token: "0xc72b96e0E48ecd4DC75E1e45396e26300BC39681" },
+  // $LEND — our own token. No Chainlink oracle: priced live via DexScreener
+  // (see DEXSCREENER_TOKENS in lib/priceFeeds.ts). Low LTV: thin liquidity + high volatility.
+  { symbol: "LEND", name: "Lend Casino", kind: "Platform token", ltvBps: 5000, unitLabel: "tokens", token: "0x808945DaBDc5cC8D6b12eAaFE2629e73E3B8406f" },
 ];
 
 async function main() {

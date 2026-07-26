@@ -4,8 +4,7 @@
  * asset kept, and a LIQUIDATION ledger entry written.
  */
 import { db } from "../lib/db";
-import { getMark } from "../lib/prices";
-import { mulDivFloor } from "../lib/money";
+import { getMark, collateralValueCents } from "../lib/prices";
 
 const HEALTH_FLOOR_BPS = 11_000n; // 110%
 
@@ -17,13 +16,13 @@ export async function runLiquidationOnce(): Promise<void> {
   const open = await db.position.findMany({ where: { status: "OPEN" }, include: { asset: true } });
   for (const p of open) {
     if (p.debtCents <= 0n) continue;
-    let markCents: bigint;
+    let scaledCents: bigint;
     try {
-      markCents = (await getMark(p.assetSymbol)).cents;
+      scaledCents = (await getMark(p.assetSymbol)).scaledCents;
     } catch {
       continue; // don't liquidate on stale/unavailable pricing
     }
-    const currentValue = mulDivFloor(BigInt(p.qtyRaw), markCents, 10n ** BigInt(p.asset.decimals));
+    const currentValue = collateralValueCents(BigInt(p.qtyRaw), scaledCents, p.asset.decimals);
     // currentValue < debt * 1.10  <=>  currentValue*10000 < debt*11000
     if (currentValue * 10_000n < p.debtCents * HEALTH_FLOOR_BPS) {
       await db.$transaction(async (tx) => {

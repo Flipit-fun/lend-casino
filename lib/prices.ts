@@ -15,11 +15,52 @@
 import { priceConfig } from "./env";
 import { getRedis } from "./redis";
 import { getPublicClient } from "./chain";
-import { ROBINHOOD_FEEDS, AGGREGATOR_V3_ABI } from "./priceFeeds";
+import { mulDivFloor } from "./money";
+import { ROBINHOOD_FEEDS, AGGREGATOR_V3_ABI, DEXSCREENER_TOKENS } from "./priceFeeds";
+
+/**
+ * Price precision. Marks are carried as `scaledCents` = USD-cents × PRICE_SCALE
+ * so we can represent a price far below one cent per unit (e.g. a token worth
+ * $0.000036 → 0.0036 cents → scaledCents 3_600_000). `cents` (whole cents) is
+ * kept for display/back-compat; all COLLATERAL VALUATION uses `scaledCents`.
+ */
+export const PRICE_SCALE = 1_000_000_000n; // 1e9
 
 export interface PriceQuote {
-  cents: bigint; // USD cents per unit
+  cents: bigint; // whole USD cents per unit (display / back-compat, floored)
+  scaledCents: bigint; // cents × PRICE_SCALE — exact price for valuation math
   asOf: Date;
+}
+
+/** Build a quote from a scaled-cents price; derives whole `cents` for display. */
+export function quoteFromScaledCents(scaledCents: bigint, asOf: Date = new Date()): PriceQuote {
+  return { cents: scaledCents / PRICE_SCALE, scaledCents, asOf };
+}
+
+/** USD dollars/unit -> scaled cents (cents × PRICE_SCALE), full precision. */
+export function usdToScaledCents(usd: number): bigint {
+  return BigInt(Math.round(usd * 100 * Number(PRICE_SCALE)));
+}
+
+/** Build a quote from a USD-dollar float price. */
+export function quoteFromUsd(usd: number, asOf: Date = new Date()): PriceQuote {
+  return quoteFromScaledCents(usdToScaledCents(usd), asOf);
+}
+
+/**
+ * Collateral value in whole USD cents for `qtyRaw` base units at a given mark.
+ *   value = qtyRaw × scaledCents / (10^decimals × PRICE_SCALE)
+ */
+export function collateralValueCents(qtyRaw: bigint, scaledCents: bigint, decimals: number): bigint {
+  return mulDivFloor(qtyRaw, scaledCents, 10n ** BigInt(decimals) * PRICE_SCALE);
+}
+
+/**
+ * Token base units purchasable for `usdCents` at a given mark — inverse of
+ * collateralValueCents. qtyRaw = usdCents × PRICE_SCALE × 10^decimals / scaledCents.
+ */
+export function qtyRawFromUsdCents(usdCents: bigint, scaledCents: bigint, decimals: number): bigint {
+  return mulDivFloor(usdCents * PRICE_SCALE, 10n ** BigInt(decimals), scaledCents);
 }
 
 export interface PriceProvider {
@@ -50,7 +91,7 @@ export function usdToCents(usd: number): bigint {
 // ETH/USD from Coinbase spot (no API key). Cached 10s in Redis (best-effort).
 // On any failure it falls back to the static ETH price so the critical
 // chip<->ETH conversions never hard-fail.
-async function fetchEthUsdCents(): Promise<bigint> {
+async function fetchEthUsdScaledCents(): Promise<bigint> {
   const res = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot", {
     cache: "no-store",
     signal: AbortSignal.timeout(4000),
@@ -59,7 +100,7 @@ async function fetchEthUsdCents(): Promise<bigint> {
   const json = (await res.json()) as { data?: { amount?: string } };
   const amount = Number(json?.data?.amount);
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("bad ETH price payload");
-  return usdToCents(amount);
+  return usdToScaledCents(amount);
 }
 
 export async function liveEthQuote(): Promise<PriceQuote> {
@@ -70,26 +111,88 @@ export async function liveEthQuote(): Promise<PriceQuote> {
     const cached = await redis.get(cacheKey);
     if (cached) {
       const p = JSON.parse(cached);
-      return { cents: BigInt(p.cents), asOf: new Date(p.asOf) };
+      return quoteFromScaledCents(BigInt(p.scaledCents), new Date(p.asOf));
     }
   } catch {
     redis = null; // Redis unavailable — proceed without cache
   }
 
-  let cents: bigint;
+  let scaledCents: bigint;
   try {
-    cents = await fetchEthUsdCents();
+    scaledCents = await fetchEthUsdScaledCents();
   } catch {
-    cents = usdToCents(STATIC_USD.ETH); // fallback, still marked fresh
+    scaledCents = usdToScaledCents(STATIC_USD.ETH); // fallback, still marked fresh
   }
-  const quote: PriceQuote = { cents, asOf: new Date() };
+  const quote = quoteFromScaledCents(scaledCents, new Date());
   if (redis) {
     try {
       await redis.set(
         cacheKey,
-        JSON.stringify({ cents: cents.toString(), asOf: quote.asOf.toISOString() }),
+        JSON.stringify({ scaledCents: scaledCents.toString(), asOf: quote.asOf.toISOString() }),
         "EX",
         10
+      );
+    } catch {
+      /* ignore cache write failure */
+    }
+  }
+  return quote;
+}
+
+/* ----------------------- DexScreener live price ---------------------------- */
+/**
+ * Live USD price for a DEX-traded token (no oracle) via the DexScreener public
+ * API. Picks the pair with the deepest USD liquidity (ignores dust pairs) so a
+ * near-empty pool can't set the mark. Cached 30s in Redis (best-effort). Throws
+ * PriceUnavailableError if no usable pair is found — callers decide the
+ * fallback (see resolver in getMark), so we never silently mark a bad price.
+ */
+async function fetchDexScreenerScaledCents(tokenAddress: string): Promise<bigint> {
+  const res = await fetch(
+    `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`,
+    { cache: "no-store", signal: AbortSignal.timeout(4000) }
+  );
+  if (!res.ok) throw new Error(`DexScreener ${res.status}`);
+  const json = (await res.json()) as {
+    pairs?: Array<{ priceUsd?: string; liquidity?: { usd?: number } }>;
+  };
+  const pairs = json?.pairs ?? [];
+  let best: { usd: number; liq: number } | null = null;
+  for (const p of pairs) {
+    const usd = Number(p?.priceUsd);
+    const liq = Number(p?.liquidity?.usd ?? 0);
+    if (!Number.isFinite(usd) || usd <= 0) continue;
+    if (!best || liq > best.liq) best = { usd, liq };
+  }
+  if (!best) throw new Error("no usable DexScreener pair");
+  // Scaled cents preserves sub-cent precision (a $0.000036 token would round to
+  // 0 whole cents and break valuation).
+  return usdToScaledCents(best.usd);
+}
+
+async function dexScreenerQuote(symbol: string, tokenAddress: string): Promise<PriceQuote> {
+  const cacheKey = `price:dex:${symbol.toUpperCase()}`;
+  let redis: ReturnType<typeof getRedis> | null = null;
+  try {
+    redis = getRedis();
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      const p = JSON.parse(cached);
+      return quoteFromScaledCents(BigInt(p.scaledCents), new Date(p.asOf));
+    }
+  } catch {
+    redis = null;
+  }
+
+  const scaledCents = await fetchDexScreenerScaledCents(tokenAddress);
+  const quote = quoteFromScaledCents(scaledCents, new Date());
+  if (redis) {
+    try {
+      await redis.set(
+        cacheKey,
+        JSON.stringify({ scaledCents: scaledCents.toString(), asOf: quote.asOf.toISOString() }),
+        "EX",
+        30
       );
     } catch {
       /* ignore cache write failure */
@@ -120,7 +223,7 @@ export class StaticPriceProvider implements PriceProvider {
   async getMark(symbol: string): Promise<PriceQuote> {
     const usd = STATIC_USD[symbol.toUpperCase()];
     if (usd === undefined) throw new PriceUnavailableError(symbol);
-    return { cents: usdToCents(usd), asOf: new Date() }; // always fresh
+    return quoteFromUsd(usd); // always fresh
   }
   getEthUsd(): Promise<PriceQuote> {
     return this.getMark("ETH");
@@ -173,8 +276,8 @@ export class HttpPriceProvider implements PriceProvider {
     const cacheKey = `price:${sym}`;
     const cached = await redis.get(cacheKey);
     if (cached) {
-      const { cents, asOf } = JSON.parse(cached);
-      return { cents: BigInt(cents), asOf: new Date(asOf) };
+      const { scaledCents, asOf } = JSON.parse(cached);
+      return quoteFromScaledCents(BigInt(scaledCents), new Date(asOf));
     }
     const res = await fetch(`${this.url}?symbol=${encodeURIComponent(sym)}`, {
       headers: this.key ? { Authorization: `Bearer ${this.key}` } : undefined,
@@ -182,10 +285,10 @@ export class HttpPriceProvider implements PriceProvider {
     });
     if (!res.ok) throw new PriceUnavailableError(sym);
     const { usd, asOf } = this.parseResponse(await res.json());
-    const quote: PriceQuote = { cents: usdToCents(usd), asOf };
+    const quote = quoteFromUsd(usd, asOf);
     await redis.set(
       cacheKey,
-      JSON.stringify({ cents: quote.cents.toString(), asOf: quote.asOf.toISOString() }),
+      JSON.stringify({ scaledCents: quote.scaledCents.toString(), asOf: quote.asOf.toISOString() }),
       "EX",
       10
     );
@@ -223,7 +326,7 @@ export class OnchainPriceProvider implements PriceProvider {
       const cached = await redis.get(cacheKey);
       if (cached) {
         const p = JSON.parse(cached);
-        return { cents: BigInt(p.cents), asOf: new Date(p.asOf) };
+        return quoteFromScaledCents(BigInt(p.scaledCents), new Date(p.asOf));
       }
     } catch {
       redis = null;
@@ -241,16 +344,17 @@ export class OnchainPriceProvider implements PriceProvider {
       ]);
       const answer = (round as readonly bigint[])[1]; // int256 price
       if (answer <= 0n) throw new Error("non-positive feed answer");
-      const cents = (answer * 100n) / 10n ** BigInt(decimals as number);
+      // scaledCents = answer × 100 × PRICE_SCALE / 10^feedDecimals
+      const scaledCents = mulDivFloor(answer, 100n * PRICE_SCALE, 10n ** BigInt(decimals as number));
       // Treat the read as fresh: stock feeds hold last price off-hours by design,
       // so we don't reject on updatedAt here (see docs; harden with oraclePaused
       // + sequencer-uptime + heartbeat for production).
-      const quote: PriceQuote = { cents, asOf: new Date() };
+      const quote = quoteFromScaledCents(scaledCents, new Date());
       if (redis) {
         try {
           await redis.set(
             cacheKey,
-            JSON.stringify({ cents: cents.toString(), asOf: quote.asOf.toISOString() }),
+            JSON.stringify({ scaledCents: scaledCents.toString(), asOf: quote.asOf.toISOString() }),
             "EX",
             10
           );
@@ -298,7 +402,13 @@ function assertFresh(symbol: string, asOf: Date) {
 
 /** Live mark for an asset symbol, in USD cents. Throws if stale/unavailable. */
 export async function getMark(symbol: string): Promise<PriceQuote> {
-  const q = await getPriceProvider().getMark(symbol);
+  const sym = symbol.toUpperCase();
+  // DEX-priced tokens (no oracle) resolve via DexScreener regardless of the
+  // configured PRICE_SOURCE — they have no Chainlink feed or static entry.
+  const dexToken = DEXSCREENER_TOKENS[sym];
+  const q = dexToken
+    ? await dexScreenerQuote(sym, dexToken)
+    : await getPriceProvider().getMark(symbol);
   assertFresh(symbol, q.asOf);
   return q;
 }

@@ -23,6 +23,11 @@ export function initCage(): () => void {
     [...r.querySelectorAll(s)] as T[];
   const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
   const usd = (n: number) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Price formatter that keeps precision for sub-cent marks (e.g. micro-priced tokens).
+  const usdPx = (n: number) =>
+    n > 0 && n < 0.01
+      ? "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 })
+      : usd(n);
   const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
   const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
   const uuid = () => (crypto as Crypto).randomUUID();
@@ -214,6 +219,7 @@ export function initCage(): () => void {
     { id: "mines", n: "Mines", g: "\u2666", d: "Turn tiles for a rising multiplier. Stop before you hit one.", e: "3.00%", p: "compounding" },
     { id: "dice", n: "Dice", g: "\u2b26", d: "Set your own line from 2 to 95. The tighter the line, the bigger the pay.", e: "2.00%", p: "up to 49×" },
     { id: "hilo", n: "Hi-Lo", g: "\u2665", d: "Call the next card higher or lower. Chain the calls or take the pot.", e: "3.00%", p: "chained" },
+    { id: "slots", n: "Slots", g: "\u2b50", d: "Three reels, one pull. Line up the sevens for the top pay.", e: "3.51%", p: "up to 200×" },
   ];
   const tableCards = $("#tableCards");
   if (tableCards) {
@@ -241,7 +247,7 @@ export function initCage(): () => void {
   }
 
   /* ================================================================ CAGE */
-  type Asset = { symbol: string; name: string; kind: string; decimals: number; ltvBps: number; unitLabel: string; markCents: string | null };
+  type Asset = { symbol: string; name: string; kind: string; decimals: number; ltvBps: number; unitLabel: string; markCents: string | null; markScaledCents: string | null };
   let ASSETS: Asset[] = [];
   let selectedAsset: Asset | null = null;
 
@@ -259,7 +265,7 @@ export function initCage(): () => void {
       const el = document.createElement("div");
       el.className = "asset";
       el.tabIndex = 0;
-      const px = a.markCents ? usd(Number(a.markCents) / 100) : "—";
+      const px = a.markScaledCents ? usdPx(Number(a.markScaledCents) / 1e11) : "—";
       el.innerHTML = `<div class="tk mono">${a.symbol}</div><div><div class="nm">${a.name}</div><div class="kind">${a.kind}</div></div><div style="text-align:right"><div class="px mono">${px}</div><div class="ltv mono">LTV ${Math.round(a.ltvBps / 100)}%</div></div><div class="mono" style="color:var(--ink-38);font-size:16px">&rsaquo;</div>`;
       const pick = () => {
         $$(".asset").forEach((n) => n.classList.remove("sel"));
@@ -279,13 +285,13 @@ export function initCage(): () => void {
     if (!a) return;
     const dollars = Math.max(0, +($("#qtyIn") as HTMLInputElement).value || 0);
     const usdCents = Math.round(dollars * 100);
-    const markCents = Number(a.markCents ?? 0);
-    const qty = markCents ? usdCents / markCents : 0; // fractional shares
+    const pxUsd = a.markScaledCents ? Number(a.markScaledCents) / 1e11 : 0; // USD per unit
+    const qty = pxUsd ? dollars / pxUsd : 0; // fractional units
     const drawCents = Math.floor((usdCents * a.ltvBps) / 10000);
     $("#deskTitle")!.textContent = a.symbol + " · " + a.name;
     $("#deskUnit")!.textContent = "USD";
-    $("#roPrice")!.textContent = a.markCents ? usd(markCents / 100) : "—";
-    $("#roQty")!.textContent = a.markCents ? qty.toFixed(4) + " " + a.unitLabel : "—";
+    $("#roPrice")!.textContent = a.markScaledCents ? usdPx(pxUsd) : "—";
+    $("#roQty")!.textContent = a.markScaledCents ? qty.toFixed(4) + " " + a.unitLabel : "—";
     $("#roLtv")!.textContent = Math.round(a.ltvBps / 100) + "%";
     const eth = Number(lc()?.me?.ethUsdCents ?? 0);
     $("#roEth")!.textContent = eth ? (drawCents / eth).toFixed(4) + " ETH" : "—";
@@ -655,6 +661,62 @@ export function initCage(): () => void {
       await refresh();
     } catch (e) { toast((e as Error).message, "bad"); $("#coinMsg")!.textContent = "Call the toss."; }
     finally { flipping = false; (tossBtn as HTMLButtonElement).disabled = false; }
+  };
+
+  /* ---------------------------------------------------------------- SLOTS */
+  const SLOT_EMOJI: Record<string, string> = {
+    cherry: "\u{1F352}", lemon: "\u{1F34B}", bell: "\u{1F514}",
+    star: "\u2B50", diamond: "\u{1F48E}", seven: "7\uFE0F\u20E3",
+  };
+  const SLOT_SYMS = Object.keys(SLOT_EMOJI);
+  const randSlotEmoji = () => SLOT_EMOJI[SLOT_SYMS[Math.floor(Math.random() * SLOT_SYMS.length)]];
+  let spinningSlots = false, slotStreak: boolean[] = [];
+  stepper("[data-sstake]", "slotStake");
+  const spinBtn = $("#spinBtn");
+  if (spinBtn) spinBtn.onclick = async () => {
+    if (spinningSlots || !requireAuth()) return;
+    const stake = Math.floor(+($("#slotStake") as HTMLInputElement).value || 0);
+    if (stake < 1) { toast("Set a stake first.", "bad"); return; }
+    const reelEls = [$("#reel0"), $("#reel1"), $("#reel2")] as HTMLElement[];
+    if (reelEls.some((e) => !e)) return;
+    spinningSlots = true; (spinBtn as HTMLButtonElement).disabled = true;
+    $("#slotsMsg")!.textContent = "Spinning\u2026"; $("#slotsMsg")!.className = "msg";
+    reelEls.forEach((el) => { el.classList.add("spin"); el.classList.remove("hit"); });
+    const shuffle = setInterval(() => {
+      reelEls.forEach((el) => { if (el.classList.contains("spin")) el.textContent = randSlotEmoji(); });
+    }, 80);
+    try {
+      const r = await api<{ outcome: { reels: string[]; win: boolean }; returnCents: number }>(
+        "/api/game/slots", { body: { stakeCents: stake * 100 }, idem: true }
+      );
+      const reels = r.outcome.reels;
+      await wait(600);
+      // Stop reels left-to-right for the classic slots feel.
+      for (let i = 0; i < 3; i++) {
+        reelEls[i].textContent = SLOT_EMOJI[reels[i]] ?? "?";
+        reelEls[i].classList.remove("spin");
+        if (i < 2) await wait(420);
+      }
+      clearInterval(shuffle);
+      if (r.returnCents > 0) reelEls.forEach((el) => el.classList.add("hit"));
+      slotStreak.unshift(r.returnCents > 0); slotStreak = slotStreak.slice(0, 16);
+      $("#slotStreak")!.innerHTML = slotStreak
+        .map((w) => `<b style="background:${w ? "#B98B2E" : "#0D5843"}">${w ? "W" : "L"}</b>`)
+        .join("");
+      if (r.returnCents > 0) {
+        $("#slotsMsg")!.textContent = "Paid " + fmt(r.returnCents / 100);
+        $("#slotsMsg")!.className = "msg w"; toast("Winner.", "good");
+      } else {
+        $("#slotsMsg")!.textContent = "No line \u2014 house takes it";
+        $("#slotsMsg")!.className = "msg l"; toast("No match.", "bad");
+      }
+      await refresh();
+    } catch (e) {
+      reelEls.forEach((el) => el.classList.remove("spin"));
+      toast((e as Error).message, "bad"); $("#slotsMsg")!.textContent = "Pull to spin.";
+    } finally {
+      clearInterval(shuffle); spinningSlots = false; (spinBtn as HTMLButtonElement).disabled = false;
+    }
   };
 
   /* ---------------------------------------------------------------- cards */

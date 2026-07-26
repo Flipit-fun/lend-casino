@@ -12,10 +12,12 @@ export const GET = handle(async () => {
   const withMarks = await Promise.all(
     assets.map(async (a) => {
       let markCents: bigint | null = null;
+      let markScaledCents: bigint | null = null;
       let asOf: Date | null = null;
       try {
         const q = await getMark(a.symbol);
         markCents = q.cents;
+        markScaledCents = q.scaledCents;
         asOf = q.asOf;
       } catch {
         // Leave mark null if pricing is unavailable/stale for this symbol.
@@ -28,6 +30,7 @@ export const GET = handle(async () => {
         ltvBps: a.ltvBps,
         unitLabel: a.unitLabel,
         markCents,
+        markScaledCents,
         asOf,
       };
     })

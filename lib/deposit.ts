@@ -5,8 +5,8 @@
  * watcher credits chips only once the on-chain transfer confirms.
  */
 import { db } from "./db";
-import { getMark } from "./prices";
-import { mulDivFloor, applyBps } from "./money";
+import { getMark, collateralValueCents, qtyRawFromUsdCents } from "./prices";
+import { applyBps } from "./money";
 import { ApiError } from "./errors";
 import { treasuryAddress } from "./treasury/signer";
 
@@ -37,13 +37,12 @@ export async function createDepositIntent(
 
   // Convert the requested USD amount into a (fractional) token quantity in base
   // units, then re-derive the value/draw from that exact quantity.
-  const scale = 10n ** BigInt(asset.decimals);
-  const qtyRaw = mulDivFloor(usdCents, scale, mark.cents);
+  const qtyRaw = qtyRawFromUsdCents(usdCents, mark.scaledCents, asset.decimals);
   if (qtyRaw < BigInt(asset.minDepositRaw)) {
     throw new ApiError("MIN_DEPOSIT", "Amount is below the minimum for this asset.", 400);
   }
 
-  const valueCents = mulDivFloor(qtyRaw, mark.cents, scale);
+  const valueCents = collateralValueCents(qtyRaw, mark.scaledCents, asset.decimals);
   const drawnCents = applyBps(valueCents, asset.ltvBps);
   if (drawnCents < 1n) throw new ApiError("TOO_SMALL", "That deposit draws less than one chip.", 400);
 
@@ -132,7 +131,7 @@ export async function settleConfirmedDeposit(args: {
     if (args.receivedRaw !== BigInt(position.qtyRaw)) {
       // Wrong amount: re-quote against what actually arrived, at the current mark.
       const mark = await getMark(asset.symbol);
-      valueCents = mulDivFloor(args.receivedRaw, mark.cents, 10n ** BigInt(asset.decimals));
+      valueCents = collateralValueCents(args.receivedRaw, mark.scaledCents, asset.decimals);
       drawnCents = applyBps(valueCents, asset.ltvBps);
       requoted = true;
     }

@@ -32,3 +32,16 @@ export const ROBINHOOD_FEEDS: Record<string, `0x${string}`> = {
   AMD: "0x943A29E7ae51A4798823ca9eEd2ed533B2A22C72",
   INTC: "0x3f390C5C24628Ac7C489515402235FeAD71D1913",
 };
+
+/**
+ * Tokens priced from the DexScreener public API instead of a Chainlink feed —
+ * used for on-chain tokens that trade on a DEX but have no oracle (e.g. our own
+ * $LEND token). Maps symbol -> ERC-20 token contract address on Robinhood
+ * Chain. The price resolver picks the pair with the deepest USD liquidity.
+ *
+ * DexScreener endpoint (no API key):
+ *   https://api.dexscreener.com/latest/dex/tokens/<tokenAddress>
+ */
+export const DEXSCREENER_TOKENS: Record<string, `0x${string}`> = {
+  LEND: "0x808945DaBDc5cC8D6b12eAaFE2629e73E3B8406f",
+};

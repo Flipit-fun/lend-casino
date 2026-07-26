@@ -28,6 +28,7 @@ test("static provider throws on unknown symbol", async () => {
 });
 
 test("top-level getMark returns static stock marks (ETH is live, tested separately)", async () => {
-  const m = await getMark("SPY");
-  assert.equal(m.cents, 61_277n);
+  const m = await getMark("AAPL");
+  assert.equal(m.cents, 23_140n);
+  assert.equal(m.scaledCents, 23_140n * 1_000_000_000n); // scaled-cents precision
 });

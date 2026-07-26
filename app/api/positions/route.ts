@@ -1,8 +1,7 @@
 import { ok, handle } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getMark } from "@/lib/prices";
-import { mulDivFloor } from "@/lib/money";
+import { getMark, collateralValueCents } from "@/lib/prices";
 
 // GET /api/positions — open + closed tickets, with a live health figure (§9.3).
 export const GET = handle(async () => {
@@ -20,7 +19,7 @@ export const GET = handle(async () => {
       if (p.status === "OPEN" || p.status === "SETTLING") {
         try {
           const mark = await getMark(p.assetSymbol);
-          currentValueCents = mulDivFloor(BigInt(p.qtyRaw), mark.cents, 10n ** BigInt(p.asset.decimals));
+          currentValueCents = collateralValueCents(BigInt(p.qtyRaw), mark.scaledCents, p.asset.decimals);
           if (p.debtCents > 0n) {
             healthBps = Number((currentValueCents * 10_000n) / p.debtCents);
           }

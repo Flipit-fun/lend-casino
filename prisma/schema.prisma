@@ -193,6 +193,7 @@ enum GameKind {
   MINES
   DICE
   HILO
+  SLOTS
 }
 
 enum RoundStatus {
