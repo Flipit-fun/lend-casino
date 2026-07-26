@@ -162,3 +162,53 @@ export function redisUrl(): string {
     "redis"
   ).REDIS_URL;
 }
+
+/** Treasury caps + alert threshold (wei). Used by the sell route + worker. */
+export function treasuryCaps(): { perTxWei: bigint; dailyWei: bigint; minEthWei: bigint } {
+  if (typeof window !== "undefined") {
+    throw new Error("treasuryCaps() must never be called on the client.");
+  }
+  const c = parseOrThrow(
+    z.object({
+      PAYOUT_PER_TX_CAP_WEI: bigintString,
+      PAYOUT_DAILY_CAP_WEI: bigintString,
+      TREASURY_MIN_ETH_WEI: bigintString,
+    }),
+    process.env as Record<string, unknown>,
+    "treasury-caps"
+  );
+  return {
+    perTxWei: c.PAYOUT_PER_TX_CAP_WEI,
+    dailyWei: c.PAYOUT_DAILY_CAP_WEI,
+    minEthWei: c.TREASURY_MIN_ETH_WEI,
+  };
+}
+
+/** Confirmations to wait before crediting a deposit. Worker only. */
+export function depositConfirmations(): number {
+  if (typeof window !== "undefined") {
+    throw new Error("depositConfirmations() must never be called on the client.");
+  }
+  return parseOrThrow(
+    z.object({ DEPOSIT_CONFIRMATIONS: z.coerce.number().int().nonnegative().default(12) }),
+    process.env as Record<string, unknown>,
+    "deposit-confirmations"
+  ).DEPOSIT_CONFIRMATIONS;
+}
+
+/** Treasury signing key. Worker only; undefined elsewhere. */
+export function treasuryKey(): string | undefined {
+  if (typeof window !== "undefined") {
+    throw new Error("treasuryKey() must never be called on the client.");
+  }
+  return parseOrThrow(
+    z.object({
+      TREASURY_PRIVATE_KEY: z
+        .string()
+        .regex(/^0x[0-9a-fA-F]{64}$/, "must be a 32-byte 0x key")
+        .optional(),
+    }),
+    process.env as Record<string, unknown>,
+    "treasury-key"
+  ).TREASURY_PRIVATE_KEY;
+}

@@ -13,7 +13,7 @@
 import { createWalletClient, http, type WalletClient } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { robinhoodChain } from "../chain";
-import { serverEnv, publicEnv } from "../env";
+import { treasuryKey, publicEnv } from "../env";
 
 function assertServer() {
   if (typeof window !== "undefined") {
@@ -28,7 +28,7 @@ let _walletClient: WalletClient | null = null;
 export function getTreasuryAccount(): PrivateKeyAccount {
   assertServer();
   if (_account) return _account;
-  const key = serverEnv().TREASURY_PRIVATE_KEY;
+  const key = treasuryKey();
   if (!key) throw new Error("TREASURY_PRIVATE_KEY is not set (required by the worker to sign payouts).");
   _account = privateKeyToAccount(key as `0x${string}`);
   return _account;

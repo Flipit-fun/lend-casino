@@ -8,7 +8,7 @@
 import { getPublicClient } from "../lib/chain";
 import { treasuryAddress } from "../lib/treasury/signer";
 import { db } from "../lib/db";
-import { serverEnv } from "../lib/env";
+import { depositConfirmations } from "../lib/env";
 import { settleConfirmedDeposit } from "../lib/deposit";
 import { settleConfirmedRedemption } from "../lib/redeem";
 import { TRANSFER_EVENT } from "../lib/erc20";
@@ -18,7 +18,7 @@ const CHUNK = 1_000n;
 export async function runWatcherOnce(): Promise<void> {
   const client = getPublicClient();
   const treasury = treasuryAddress();
-  const confirmations = BigInt(serverEnv().DEPOSIT_CONFIRMATIONS);
+  const confirmations = BigInt(depositConfirmations());
 
   const head = await client.getBlockNumber();
   const safeHead = head - confirmations;

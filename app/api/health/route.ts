@@ -4,7 +4,7 @@ import { getRedis } from "@/lib/redis";
 import { getPublicClient } from "@/lib/chain";
 import { treasuryEthWei } from "@/lib/treasury/guards";
 import { getEthUsd } from "@/lib/prices";
-import { serverEnv } from "@/lib/env";
+import { treasuryCaps } from "@/lib/env";
 
 async function probe<T>(fn: () => Promise<T>): Promise<{ up: boolean; detail?: string }> {
   try {
@@ -29,7 +29,7 @@ export const GET = handle(async () => {
     treasury = {
       up: true,
       balanceWei: bal.toString(),
-      belowMin: bal < serverEnv().TREASURY_MIN_ETH_WEI,
+      belowMin: bal < treasuryCaps().minEthWei,
     };
   } catch (e) {
     treasury = { up: false, detail: (e as Error).message };

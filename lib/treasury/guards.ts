@@ -6,7 +6,7 @@
 import { getPublicClient } from "../chain";
 import { treasuryAddress } from "./signer";
 import { db } from "../db";
-import { serverEnv, sellPolicy } from "../env";
+import { treasuryCaps, sellPolicy } from "../env";
 import { getEthUsd } from "../prices";
 import { ethOwedWei, mulDivFloor } from "../money";
 
@@ -65,6 +65,6 @@ export async function checkExposure(saleCents: bigint): Promise<{ ok: boolean }>
 }
 
 export function caps() {
-  const env = serverEnv();
-  return { perTxWei: env.PAYOUT_PER_TX_CAP_WEI, dailyWei: env.PAYOUT_DAILY_CAP_WEI };
+  const c = treasuryCaps();
+  return { perTxWei: c.perTxWei, dailyWei: c.dailyWei };
 }
