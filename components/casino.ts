@@ -464,7 +464,7 @@ export function initCage(): () => void {
 
   /* ================================================================ FAIRNESS */
   async function loadFair() {
-    if (!authed()) return;
+    if (!$("#fairHash") || !authed()) return; // fairness panel removed from UI
     try {
       const f = await api<{ serverSeedHash: string; clientSeed: string; nonce: number }>("/api/fair/current");
       $("#fairHash")!.textContent = f.serverSeedHash.slice(0, 12) + "…";
