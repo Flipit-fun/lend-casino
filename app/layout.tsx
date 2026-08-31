@@ -3,9 +3,9 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Lend.Casino — Lend your portfolio. Play the house.",
+  title: "RWA.Casino — Lend your portfolio. Play the house.",
   description:
-    "Deposit a tokenized asset into the Lend.Casino treasury and draw chips against it. Play the house, settle in ETH on Robinhood Chain. Custodial demonstration build.",
+    "Deposit a tokenized asset into the RWA.Casino treasury and draw chips against it. Play the house, settle in ETH on Robinhood Chain. Custodial demonstration build.",
 };
 
 export default function RootLayout({
