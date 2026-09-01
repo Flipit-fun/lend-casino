@@ -13,7 +13,10 @@ import { settleConfirmedDeposit } from "../lib/deposit";
 import { settleConfirmedRedemption } from "../lib/redeem";
 import { TRANSFER_EVENT } from "../lib/erc20";
 
-const CHUNK = 1_000n;
+// Alchemy's free tier caps eth_getLogs at a 10-block range per request. Keep
+// chunks at 10 so each getLogs call stays within that window. (Bump this up if
+// you move to a PAYG/paid RPC plan that allows wider ranges.)
+const CHUNK = 10n;
 const NATIVE_WINDOW = 300n; // per-block native-ETH scan is expensive; bound it
 let lastHeartbeat = 0;
 
