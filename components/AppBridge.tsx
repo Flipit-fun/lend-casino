@@ -107,7 +107,7 @@ export default function AppBridge() {
       const message = new SiweMessage({
         domain: window.location.host,
         address,
-        statement: "Sign in to RWA.Casino",
+        statement: "Sign in to House.Casino",
         uri: window.location.origin,
         version: "1",
         chainId: env.NEXT_PUBLIC_CHAIN_ID,

@@ -32,7 +32,7 @@ if (!projectId) {
 
 const connectors = connectorsForWallets(
   [{ groupName: "Recommended", wallets: [injectedWallet, walletConnectWallet] }],
-  { appName: "RWA.Casino", projectId }
+  { appName: "House.Casino", projectId }
 );
 
 export const wagmiConfig = createConfig({

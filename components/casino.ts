@@ -96,7 +96,7 @@ export function initCage(): () => void {
 
   /* ---------------------------------------------------------------- loader */
   {
-    const word = "RWA.CASINO";
+    const word = "HOUSE.CASINO";
     const mark = $("#loadMark");
     if (mark) {
       mark.innerHTML = [...word]
