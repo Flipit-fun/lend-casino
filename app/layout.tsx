@@ -3,9 +3,9 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Stock.Casino — Lend your portfolio. Play the house.",
+  title: "Stock.Casino — Chips against the stocks you already own.",
   description:
-    "Deposit a tokenized asset into the Stock.Casino treasury and draw chips against it. Play the house, settle in ETH on Robinhood Chain. Custodial demonstration build.",
+    "Lock tokenized stock on Robinhood Chain and draw chips against it. Your shares are never sold — settle in ETH to unlock them and keep anything you won. Custodial demonstration build.",
 };
 
 export default function RootLayout({
@@ -23,7 +23,7 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
         <link
-          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Space+Mono:wght@400;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&family=Space+Mono:wght@400;700&display=swap"
           rel="stylesheet"
         />
       </head>

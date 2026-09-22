@@ -434,7 +434,7 @@ export function initCage(): () => void {
     if (!requireAuth() || !selectedPos) return;
     try {
       await api("/api/redeem/with-chips", { body: { positionId: selectedPos.id }, idem: true });
-      toast("Chips burned — collateral is releasing.", "gold");
+      toast("Chips burned — your stock is releasing.", "gold");
       await refresh(); selectedPos = null; loadRedeem();
     } catch (e) { toast((e as Error).message, "bad"); }
   };
@@ -446,7 +446,7 @@ export function initCage(): () => void {
     try {
       const q = await api<{ ethOwedWei: string; treasuryAddress: string }>("/api/redeem/quote", { body: { positionId: pos.id }, idem: true });
       await lc()!.payEth(q.treasuryAddress, q.ethOwedWei);
-      toast("ETH sent — releasing collateral once confirmed.", "good");
+      toast("ETH sent — releasing your stock once confirmed.", "good");
       await pollPosition(pos.id, "CLOSED");
       toast(`${pos.symbol} released back to your wallet.`, "gold");
       await refresh(); selectedPos = null; loadRedeem();
@@ -955,7 +955,7 @@ export function initCage(): () => void {
   /* ---------------------------------------------------------------- boot */
   diceReadout();
   coinReadout();
-  setTimeout(() => { if (!disposed && !authed()) toast("Connect your Robinhood wallet to get chips against collateral."); }, 4000);
+  setTimeout(() => { if (!disposed && !authed()) toast("Connect your Robinhood wallet to draw chips against your stock."); }, 4000);
 
   return () => { disposed = true; cleanups.forEach((c) => c()); };
 }
