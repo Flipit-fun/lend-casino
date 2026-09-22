@@ -96,7 +96,7 @@ export function initCage(): () => void {
 
   /* ---------------------------------------------------------------- loader */
   {
-    const word = "HOUSE.CASINO";
+    const word = "STOCK.CASINO";
     const mark = $("#loadMark");
     if (mark) {
       mark.innerHTML = [...word]
@@ -180,14 +180,14 @@ export function initCage(): () => void {
           ctx.rotate(p.rot + k * 0.32);
           ctx.font = (p.size * (1 + k * 0.3)).toFixed(1) + 'px Georgia, serif';
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          if (k > 0.02) { ctx.shadowColor = p.red ? `rgba(198,54,42,${k * 0.85})` : `rgba(185,139,46,${k * 0.85})`; ctx.shadowBlur = 6 + k * 30; }
-          ctx.fillStyle = k > 0.05 ? (p.red ? `rgba(198,54,42,${a})` : `rgba(13,88,67,${a})`) : `rgba(22,33,28,${a})`;
+          if (k > 0.02) { ctx.shadowColor = `rgba(181,139,62,${k * 0.85})`; ctx.shadowBlur = 6 + k * 30; }
+          ctx.fillStyle = k > 0.05 ? (p.red ? `rgba(181,139,62,${a})` : `rgba(110,83,38,${a})`) : `rgba(18,20,15,${a})`;
           ctx.fillText(p.s, 0, 0);
           ctx.restore();
         }
         if (mx > -999) {
           const g = ctx.createRadialGradient(mx, my, 0, mx, my, R);
-          g.addColorStop(0, "rgba(255,240,201,.34)"); g.addColorStop(0.55, "rgba(255,240,201,.10)"); g.addColorStop(1, "rgba(255,240,201,0)");
+          g.addColorStop(0, "rgba(231,206,150,.40)"); g.addColorStop(0.55, "rgba(231,206,150,.12)"); g.addColorStop(1, "rgba(231,206,150,0)");
           ctx.fillStyle = g; ctx.beginPath(); ctx.arc(mx, my, R, 0, 6.2832); ctx.fill();
         }
         requestAnimationFrame(frame);
@@ -511,7 +511,8 @@ export function initCage(): () => void {
   const ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
   const REDS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
   const colorOf = (n: number) => (n === 0 ? "green" : REDS.has(n) ? "red" : "black");
-  const CSS: Record<string, string> = { red: "#C6362A", black: "#16211C", green: "#0D5843" };
+  const CSS: Record<string, string> = { red: "#B58B3E", black: "#12140F", green: "#6E5326" };
+  const CSS_TXT: Record<string, string> = { red: "#241A06", black: "#EDE4D2", green: "#F6EFDD" };
   let bets: Record<string, number> = {}, spinning = false, chipVal = 5, history: number[] = [];
 
   const rack = $("#rack");
@@ -538,7 +539,8 @@ export function initCage(): () => void {
     for (let i = 0; i < 12; i++) [3 + i * 3, 2 + i * 3, 1 + i * 3].forEach((n, r) => mkCell(n, "n:" + n, colorOf(n), i + 2, r + 1));
     ([["c:3", 1], ["c:2", 2], ["c:1", 3]] as [string, number][]).forEach(([k, r]) => mkCell("2:1", k, "out", 14, r));
     ([["d:1", "1st 12", 2], ["d:2", "2nd 12", 6], ["d:3", "3rd 12", 10]] as [string, string, number][]).forEach(([k, l, c]) => mkCell(l, k, "out", c, 4, 4));
-    ([["low", "1–18", 2], ["even", "Even", 4], ["red", "Red", 6], ["black", "Black", 8], ["odd", "Odd", 10], ["high", "19–36", 12]] as [string, string, number][]).forEach(([k, l, c]) => mkCell(l, k, "out", c, 5, 2));
+    ([["low", "1–18", 2], ["even", "Even", 4], ["red", "Gold", 6], ["black", "Black", 8], ["odd", "Odd", 10], ["high", "19–36", 12]] as [string, string, number][])
+      .forEach(([k, l, c]) => mkCell(l, k, "out" + (k === "red" ? " sw-gold" : k === "black" ? " sw-black" : ""), c, 5, 2));
   }
   function placeBet(key: string, el: HTMLElement) {
     if (spinning || !requireAuth()) return;
@@ -569,28 +571,28 @@ export function initCage(): () => void {
     if (!wx) return;
     wx.clearRect(0, 0, 660, 660);
     const rim = wx.createLinearGradient(0, 0, 660, 660);
-    rim.addColorStop(0, "#E9CE86"); rim.addColorStop(0.5, "#B98B2E"); rim.addColorStop(1, "#8C671C");
+    rim.addColorStop(0, "#EFD9A4"); rim.addColorStop(0.5, "#B58B3E"); rim.addColorStop(1, "#6E5326");
     wx.fillStyle = rim; wx.beginPath(); wx.arc(CX, CY, R_OUT, 0, 6.2832); wx.fill();
-    wx.fillStyle = "#F2EDE1"; wx.beginPath(); wx.arc(CX, CY, R_OUT - 9, 0, 6.2832); wx.fill();
+    wx.fillStyle = "#EBE3D6"; wx.beginPath(); wx.arc(CX, CY, R_OUT - 9, 0, 6.2832); wx.fill();
     ORDER.forEach((n, i) => {
       const a0 = -Math.PI / 2 + i * STEP - STEP / 2 + wheelAng;
       wx.beginPath(); wx.moveTo(CX, CY); wx.arc(CX, CY, R_POCK, a0, a0 + STEP); wx.closePath();
-      wx.fillStyle = CSS[colorOf(n)]; wx.fill(); wx.strokeStyle = "rgba(242,237,225,.55)"; wx.lineWidth = 1.4; wx.stroke();
+      wx.fillStyle = CSS[colorOf(n)]; wx.fill(); wx.strokeStyle = "rgba(235,227,214,.5)"; wx.lineWidth = 1.4; wx.stroke();
     });
     ORDER.forEach((n, i) => {
       const a = -Math.PI / 2 + i * STEP + wheelAng;
       wx.save(); wx.translate(CX + Math.cos(a) * (R_POCK - 34), CY + Math.sin(a) * (R_POCK - 34)); wx.rotate(a + Math.PI / 2);
-      wx.fillStyle = "#FCFAF4"; wx.font = '700 26px "Space Mono", monospace'; wx.textAlign = "center"; wx.textBaseline = "middle"; wx.fillText(String(n), 0, 0); wx.restore();
+      wx.fillStyle = CSS_TXT[colorOf(n)]; wx.font = '700 26px "Space Mono", monospace'; wx.textAlign = "center"; wx.textBaseline = "middle"; wx.fillText(String(n), 0, 0); wx.restore();
     });
-    wx.fillStyle = "#F2EDE1"; wx.beginPath(); wx.arc(CX, CY, R_IN, 0, 6.2832); wx.fill();
-    wx.strokeStyle = "#B98B2E"; wx.lineWidth = 4; wx.stroke();
+    wx.fillStyle = "#EBE3D6"; wx.beginPath(); wx.arc(CX, CY, R_IN, 0, 6.2832); wx.fill();
+    wx.strokeStyle = "#B58B3E"; wx.lineWidth = 4; wx.stroke();
     const hub = wx.createRadialGradient(CX - 22, CY - 26, 6, CX, CY, 74);
-    hub.addColorStop(0, "#F0D89C"); hub.addColorStop(1, "#9C7220");
+    hub.addColorStop(0, "#F2DCA8"); hub.addColorStop(1, "#6E5326");
     wx.fillStyle = hub; wx.beginPath(); wx.arc(CX, CY, 74, 0, 6.2832); wx.fill();
-    wx.fillStyle = "#0D5843"; wx.beginPath(); wx.arc(CX, CY, 30, 0, 6.2832); wx.fill();
+    wx.fillStyle = "#12140F"; wx.beginPath(); wx.arc(CX, CY, 30, 0, 6.2832); wx.fill();
     const bx = CX + Math.cos(ballAng) * ballR, by = CY + Math.sin(ballAng) * ballR;
     wx.save(); wx.shadowColor = "rgba(0,0,0,.45)"; wx.shadowBlur = 12; wx.shadowOffsetY = 4;
-    const g = wx.createRadialGradient(bx - 5, by - 6, 1, bx, by, 15); g.addColorStop(0, "#fff"); g.addColorStop(1, "#CFC6B2");
+    const g = wx.createRadialGradient(bx - 5, by - 6, 1, bx, by, 15); g.addColorStop(0, "#fff"); g.addColorStop(1, "#D7CDB6");
     wx.fillStyle = g; wx.beginPath(); wx.arc(bx, by, 14, 0, 6.2832); wx.fill(); wx.restore();
   }
   drawWheel();
@@ -622,7 +624,7 @@ export function initCage(): () => void {
         })(t0);
       });
       history.unshift(win); history = history.slice(0, 10);
-      $("#lastNums")!.innerHTML = history.map((h) => `<b style="background:${CSS[colorOf(h)]}">${h}</b>`).join("");
+      $("#lastNums")!.innerHTML = history.map((h) => `<b style="background:${CSS[colorOf(h)]};color:${CSS_TXT[colorOf(h)]}">${h}</b>`).join("");
       const cell = cellMap["n:" + win];
       if (cell) { cell.classList.add("win"); setTimeout(() => cell.classList.remove("win"), 2400); }
       await wait(250);
@@ -655,7 +657,7 @@ export function initCage(): () => void {
       ($("#coin") as HTMLElement).style.transform = `rotateX(${rot}deg)`;
       await wait(2700);
       cstreak.unshift(res); cstreak = cstreak.slice(0, 16);
-      $("#streak")!.innerHTML = cstreak.map((s) => `<b style="background:${s === "H" ? "#B98B2E" : "#0D5843"}">${s}</b>`).join("");
+      $("#streak")!.innerHTML = cstreak.map((s) => `<b style="background:${s === "H" ? "#B58B3E" : "#12140F"};color:${s === "H" ? "#241A06" : "#E7CE96"}">${s}</b>`).join("");
       if (r.returnCents > 0) { $("#coinMsg")!.textContent = (res === "H" ? "Heads" : "Tails") + " — you take " + fmt(r.returnCents / 100); $("#coinMsg")!.className = "msg w"; toast("Called it.", "good"); }
       else { $("#coinMsg")!.textContent = (res === "H" ? "Heads" : "Tails") + " — house takes it"; $("#coinMsg")!.className = "msg l"; toast("Wrong call.", "bad"); }
       await refresh();
@@ -701,7 +703,7 @@ export function initCage(): () => void {
       if (r.returnCents > 0) reelEls.forEach((el) => el.classList.add("hit"));
       slotStreak.unshift(r.returnCents > 0); slotStreak = slotStreak.slice(0, 16);
       $("#slotStreak")!.innerHTML = slotStreak
-        .map((w) => `<b style="background:${w ? "#B98B2E" : "#0D5843"}">${w ? "W" : "L"}</b>`)
+        .map((w) => `<b style="background:${w ? "#B58B3E" : "#12140F"};color:${w ? "#241A06" : "#E7CE96"}">${w ? "W" : "L"}</b>`)
         .join("");
       if (r.returnCents > 0) {
         $("#slotsMsg")!.textContent = "Paid " + fmt(r.returnCents / 100);
@@ -878,7 +880,7 @@ export function initCage(): () => void {
       ($("#dMarker") as HTMLElement).style.left = "calc(" + roll + "% - 1.5px)";
       out.classList.add(r.outcome.win ? "w" : "l");
       dHist.unshift({ v: roll, w: r.outcome.win }); dHist = dHist.slice(0, 12);
-      $("#dHist")!.innerHTML = dHist.map((h) => `<b style="background:${h.w ? "#0D5843" : "#C6362A"}">${h.v.toFixed(2)}</b>`).join("");
+      $("#dHist")!.innerHTML = dHist.map((h) => `<b style="background:${h.w ? "#B58B3E" : "#8C2F22"};color:${h.w ? "#241A06" : "#FBF4EC"}">${h.v.toFixed(2)}</b>`).join("");
       if (r.returnCents > 0) { $("#dOutLab")!.textContent = "UNDER " + t + " — PAID " + fmt(r.returnCents / 100); toast("Won " + fmt(r.returnCents / 100) + " chips.", "good"); }
       else { $("#dOutLab")!.textContent = "NEEDED UNDER " + t + " — HOUSE TAKES IT"; toast("House takes it.", "bad"); }
       await refresh();
