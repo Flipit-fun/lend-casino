@@ -3,6 +3,10 @@
  * sellable; under winnings_only only chips above open debt. A 50 bps fee is
  * taken in chips before conversion. The sale debits chips and queues an ETH
  * payout; the payout worker performs the solvency-checked send.
+ *
+ * Note: sales are no longer gated on an aggregate treasury exposure ceiling.
+ * If the treasury cannot cover a queued payout, the worker leaves it QUEUED
+ * and retries — chips are never lost, the ETH just lands once funded.
  */
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
@@ -11,7 +15,7 @@ import { ethOwedWei, applyBps } from "./money";
 import { ApiError } from "./errors";
 import { InsufficientChipsError, withTxRetry, applyLedger, totalDebtCents } from "./ledger";
 import { sellPolicy } from "./env";
-import { checkExposure, caps } from "./treasury/guards";
+import { caps } from "./treasury/guards";
 import { normalizeAddress } from "./auth";
 
 const SELL_FEE_BPS = 50;
@@ -36,12 +40,6 @@ export async function sellChips(
     sellPolicy() === "full" ? user.chipsCents : user.chipsCents - debt > 0n ? user.chipsCents - debt : 0n;
   if (chipsCents > sellable) {
     throw new ApiError("NOT_FREE", "You can only cash out your free chips.", 400);
-  }
-
-  // Exposure ceiling — honest close rather than a silent queue (§6.2).
-  const exposure = await checkExposure(chipsCents);
-  if (!exposure.ok) {
-    throw new ApiError("WINDOW_CLOSED", "The cash-out window is closed while the treasury rebalances.", 503);
   }
 
   const feeChips = applyBps(chipsCents, SELL_FEE_BPS);
